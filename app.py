@@ -7,13 +7,15 @@ import smoldocling
 import torch
 import fitz # PyMuPDF
 import fast_converter
+import structure_engine # New table extraction engine
+import warnings
 
-# Ensure CUDA is used if available
+# Ensure CUDA is used if available (though we default to CPU for this build)
 DEVICE = "cpu"
 
 def process_upload(file, mode, progress=gr.Progress()):
     if file is None:
-        return None, None, "No file uploaded."
+        return None, None, None, "No file uploaded."
     
     input_path = file.name
     print(f"Processing input: {input_path} (Mode: {mode})")
@@ -31,26 +33,44 @@ def process_upload(file, mode, progress=gr.Progress()):
                         text = doc[0].get_text()
                         if len(text.strip()) > 50: # Arbitrary threshold for "digital text"
                             print("Auto-Detect: Found significant text layer. Using FAST mode.")
-                            mode = "Fast (Text Only)"
+                            mode = "gmft (Fast Tables)" # Upgrade auto to gmft for better tables
                         else:
-                            print("Auto-Detect: Low text density. Using OCR mode.")
-                            mode = "Accurate (OCR)"
+                            print("Auto-Detect: Low text density. Using Surya mode.")
+                            mode = "Surya (Scan Tables)" # Upgrade auto scan to Surya
                     doc.close()
                 except Exception as e:
                     print(f"Auto-detect failed: {e}. Defaulting to OCR.")
-                    mode = "Accurate (OCR)"
+                    mode = "Surya (Scan Tables)"
             else:
                 # Images always need OCR
-                mode = "Accurate (OCR)"
+                mode = "Surya (Scan Tables)"
+
+        markdown_text = None
 
         # --- DISPATCHER ---
-        if mode == "Fast (Text Only)":
-             progress(0.2, desc="Extracting text (Fast Mode)...")
+        if mode == "MarkItDown (Text Only)":
+             progress(0.2, desc="Extracting text (MarkItDown)...")
              markdown_text = fast_converter.convert_fast(input_path)
-             if markdown_text is None:
-                 return None, None, "Failed to convert in Fast Mode."
+             
+        elif mode == "gmft (Fast Tables)":
+             progress(0.2, desc="Extracting tables (gmft)...")
+             if not input_path.lower().endswith(".pdf"):
+                 return None, None, None, "Error: gmft only supports PDFs."
+             markdown_text = structure_engine.extract_with_gmft(input_path)
 
-        else: # Accurate (OCR)
+        elif mode == "Surya (Scan Tables)":
+             progress(0.2, desc="Scanning tables (Surya)...")
+             images = []
+             if input_path.lower().endswith(".pdf"):
+                 images = smoldocling.pdf_to_images(input_path)
+             else:
+                 from PIL import Image
+                 images = [Image.open(input_path).convert("RGB")]
+             
+             markdown_text = structure_engine.extract_with_surya(images)
+
+        else: # SmolDocling (VLM)
+            progress(0.2, desc="Initializing VLM...")
             # Callback wrapper for Gradio Progress
             def update_progress(p, desc):
                 progress(p, desc=desc)
@@ -63,7 +83,7 @@ def process_upload(file, mode, progress=gr.Progress()):
             )
         
         if markdown_text is None:
-            return None, None, "Failed to process document."
+            return None, None, None, "Failed to process document."
             
         progress(1.0, desc="Finalizing...")
             
@@ -73,23 +93,26 @@ def process_upload(file, mode, progress=gr.Progress()):
         output_path = os.path.join(temp_dir, output_filename)
         
         with open(output_path, "w", encoding="utf-8") as f:
-            f.write(markdown_text)
+             f.write(markdown_text)
             
-        return markdown_text, output_path, None # None = No error
+        # Return md twice (for view and raw), then path, then error
+        return markdown_text, markdown_text, output_path, None 
         
     except Exception as e:
-        return None, None, f"Error: {str(e)}"
+        import traceback
+        traceback.print_exc()
+        return None, None, None, f"Error: {str(e)}"
 
 # Minimalist Custom CSS
+# Removed hardcoded colors to allow Gradio theme to handle contrast
 custom_css = """
-body { background-color: #f8f9fa; }
 .container { max-width: 800px; margin: auto; padding-top: 2rem; }
-.output-markdown { border: 1px solid #e0e0e0; padding: 1rem; border-radius: 8px; background: white; }
+.output-markdown { padding: 1rem; border-radius: 8px; }
 footer { visibility: hidden; }
 """
 
-# Create Gradio Interface with Monochrome Theme
-with gr.Blocks(theme=gr.themes.Monochrome(), css=custom_css, title="SmolDocling") as demo:
+# Create Gradio Interface with Soft Theme (Better contrast handling)
+with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, title="SmolDocling") as demo:
     
     with gr.Column(elem_classes="container"):
         gr.Markdown("# 📄 SmolDocling", elem_id="header")
@@ -103,7 +126,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=custom_css, title="SmolDocling"
                 scale=2
             )
             mode_input = gr.Radio(
-                ["Auto", "Fast (Text Only)", "Accurate (OCR)"],
+                ["Auto", "MarkItDown (Text Only)", "gmft (Fast Tables)", "Surya (Scan Tables)", "SmolDocling (VLM)"],
                 label="Conversion Mode (Default: Auto)",
                 value="Auto",
                 scale=1
@@ -111,7 +134,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=custom_css, title="SmolDocling"
             process_btn = gr.Button("Convert", variant="primary", scale=1)
             
             # Quick Tip
-            gr.Markdown("ℹ️ **Tip:** 'Auto' uses Fast mode for digital PDFs. Select 'Accurate' if tables are broken.")
+            gr.Markdown("ℹ️ **Tip:** 'gmft' is best for digital tables. 'Surya' is best for scanned tables.")
         
         error_box = gr.Markdown(visible=True) # To show errors
         
@@ -120,26 +143,15 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=custom_css, title="SmolDocling"
                 output_md_view = gr.Markdown(elem_classes="output-markdown")
             
             with gr.TabItem("Raw Code"):
-                output_raw_text = gr.TextArea(show_copy_button=True, label="Markdown Source")
+                output_raw_text = gr.TextArea(label="Markdown Source")
 
         download_btn = gr.File(label="Download Markdown", interactive=False)
 
-    # Event Logic
+    # Event Logic - Single handler to update all outputs
     process_btn.click(
         fn=process_upload,
         inputs=[file_input, mode_input],
-        outputs=[output_md_view, download_btn, error_box]
-    ).success(
-        fn=lambda x: x[0], # Just to populate raw text area from the first output
-        inputs=[output_md_view],  # Note: logic might need adjusting depending on gradio version, simplified here
-        outputs=[output_raw_text]
-    )
-    
-    # Sync visual markdown to raw text area directly
-    process_btn.click(
-        fn=process_upload, 
-        inputs=[file_input, mode_input], 
-        outputs=[output_raw_text, download_btn, error_box]
+        outputs=[output_md_view, output_raw_text, download_btn, error_box]
     )
 
 if __name__ == "__main__":

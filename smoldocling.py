@@ -5,13 +5,15 @@ import sys
 import torch
 import warnings
 from PIL import Image
-from transformers import AutoModelForVision2Seq, AutoProcessor
+
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
 
 print("Initializing SmolDocling... (This may take a moment)")
-from transformers import AutoModelForVision2Seq, AutoProcessorF
+from transformers import AutoModelForVision2Seq, AutoProcessor
+
+# Try to import PyMuPDF
 try:
     import fitz
 except ImportError:
@@ -39,6 +41,15 @@ def load_model(device):
             model_id,
             torch_dtype=dtype,
         ).to(device)
+        
+        # Optimize for CPU execution using Dynamic Quantization
+        if device == "cpu":
+            print("Optimizing model for CPU (Dynamic Quantization)...")
+            model = torch.quantization.quantize_dynamic(
+                model, 
+                {torch.nn.Linear}, 
+                dtype=torch.qint8
+            )
     except Exception as e:
         print(f"Warning: Failed to load. Error: {e}")
         # Fallback ensuring CPU/Standard precision if the above fails
@@ -57,8 +68,8 @@ def pdf_to_images(pdf_path):
     images = []
     
     for i, page in enumerate(doc):
-        # Render page to an image (pixmap) at 150 DPI (usually good for OCR)
-        pix = page.get_pixmap(dpi=150)
+        # Render page to an image (pixmap) at 96 DPI (Faster for CPU, usually sufficient)
+        pix = page.get_pixmap(dpi=96)
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
         images.append(img)
         
