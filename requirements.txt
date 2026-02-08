@@ -1,0 +1,7 @@
+
+transformers
+torch --extra-index-url https://download.pytorch.org/whl/cpu
+pillow
+docling-core
+pymupdf
+gradio
