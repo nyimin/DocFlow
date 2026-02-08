@@ -1,0 +1,156 @@
+# ... (skip lines) ...
+
+# OpenRouter Model Configurations
+OPENROUTER_MODELS = {
+    "free": {
+        "id": "nvidia/nemotron-nano-12b-v2-vl:free",
+        "name": "Nemotron Nano 12B VL",
+        "cost_per_1m": 0.0,
+        "description": "FREE OCR specialist with video support"
+    },
+    "cheap": {
+        "id": "google/gemini-2.0-flash-lite-001",
+        "name": "Gemini 2.0 Flash Lite",
+        "cost_per_1m": 0.000075,
+        "description": "Ultra-fast, 1M context, multimodal"
+    },
+    "balanced": {
+        "id": "qwen/qwen2.5-vl-32b-instruct",
+        "name": "Qwen 2.5-VL 32B",
+        "cost_per_1m": 0.00005,
+        "description": "Best value, 75% accuracy (GPT-4o level)"
+    },
+    "quality": {
+        "id": "qwen/qwen2.5-vl-72b-instruct",
+        "name": "Qwen 2.5-VL 72B",
+        "cost_per_1m": 0.00015,
+        "description": "Highest accuracy, document specialist"
+    },
+    "premium": {
+        "id": "mistralai/pixtral-large-2411",
+        "name": "Mistral Pixtral Large",
+        "cost_per_1m": 0.002,
+        "description": "124B params, SOTA performance"
+    }
+}
+
+def extract_with_openrouter(input_path, model="free", api_key=None):
+    """
+    Extract text from PDF or image using OpenRouter vision models.
+    
+    Args:
+        input_path: Path to PDF or image file
+        model: Model tier ("free", "cheap", "balanced", "quality", "premium")
+        api_key: OpenRouter API key
+    
+    Returns:
+        tuple: (markdown_text, metadata_dict)
+        metadata includes: model_used, pages_processed, estimated_cost
+    """
+    if not OpenAI:
+        return "Error: OpenAI library not installed. Run: pip install openai", {}
+    
+    if not api_key:
+        return "Error: OpenRouter API key required. Get one at https://openrouter.ai", {}
+    
+    # Get model configuration
+    if model not in OPENROUTER_MODELS:
+        model = "free"  # Default to free model
+    
+    model_config = OPENROUTER_MODELS[model]
+    model_id = model_config["id"]
+    
+    try:
+        # Initialize OpenRouter client
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key
+        )
+        
+        # Convert PDF/image to base64
+        images_base64 = []
+        page_count = 0
+        
+        if input_path.lower().endswith('.pdf'):
+            # Process PDF pages
+            doc = fitz.open(input_path)
+            page_count = len(doc)
+            
+            for page_num in range(page_count):
+                page = doc[page_num]
+                # Render page to image (150 DPI for speed)
+                pix = page.get_pixmap(dpi=150)
+                img_bytes = pix.tobytes("png")
+                img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+                images_base64.append(img_base64)
+            
+            doc.close()
+        else:
+            # Process single image
+            with open(input_path, 'rb') as f:
+                img_bytes = f.read()
+                img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+                images_base64.append(img_base64)
+            page_count = 1
+        
+        # Prepare messages for OpenRouter
+        content = [
+            {
+                "type": "text",
+                "text": """Extract all text from this document and convert it to clean Markdown format.
+
+Instructions:
+- Preserve document structure (headings, lists, tables)
+- Maintain formatting (bold, italic, code blocks)
+- Extract tables as Markdown tables
+- Keep text order and layout
+- For multi-page documents, separate pages with '---'
+- Do not add any commentary, just output the extracted Markdown"""
+            }
+        ]
+        
+        # Add all images
+        for img_base64 in images_base64:
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{img_base64}"
+                }
+            })
+        
+        # Call OpenRouter API
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {
+                    "role": "user",
+                    "content": content
+                }
+            ],
+            max_tokens=16000  # Generous limit for long documents
+        )
+        
+        # Extract markdown text
+        markdown_text = response.choices[0].message.content
+        
+        # Calculate cost estimate
+        tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
+        estimated_cost = (tokens_used / 1_000_000) * model_config["cost_per_1m"]
+        
+        # Metadata
+        metadata = {
+            "model_used": model_config["name"],
+            "model_id": model_id,
+            "pages_processed": page_count,
+            "tokens_used": tokens_used,
+            "estimated_cost": estimated_cost,
+            "cost_per_1m_tokens": model_config["cost_per_1m"]
+        }
+        
+        return markdown_text, metadata
+        
+    except Exception as e:
+        error_msg = f"OpenRouter API Error: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return error_msg, {"error": str(e)}

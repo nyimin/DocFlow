@@ -1,45 +1,50 @@
-# SmolDocling: Hybrid PDF & Image to Markdown Converter
+# DocFlow: Effortless PDF & Image to Markdown Converter
 
-A lightweight, CPU-optimized application that intelligently converts PDFs and images to Markdown. It features a **Hybrid Pipeline** that automatically selects the best tool for the job:
+A powerful, optimized application that intelligently converts PDFs and images to clean, structured Markdown. It features a **Hybrid Pipeline** that automatically selects the best tool for the job:
 
-- **⚡ Fast Mode**: Uses `MarkItDown` (Microsoft) for instant text extraction from digital PDFs.
-- **🐢 Accurate Mode**: Uses `SmolDocling-256M` (HuggingFace) for high-quality OCR and layout analysis on scanned documents and images.
-
-## Features
-
-- **🚀 Smart Auto-Detection**: Automatically detects if a PDF is digital text or a scan and switches modes instantly.
-- **💻 CPU Optimized**: Designed to run efficiently on standard CPUs without requiring a GPU.
-- **🐳 Docker Ready**: dedicated container with a clean web UI (Gradio).
-- **📝 Markdown Output**: Clean, structured Markdown perfect for LLM context or documentation.
+- **🌐 Cloud OCR (OpenRouter)**: **(NEW)** High-quality OCR using vision models. Recommended for difficult documents and 100+ languages including **Myanmar** 🇲🇲.
+- **⚡ Fast Mode (MarkItDown)**: Used for digital PDFs. Directly extracts text and tables.
+- **📊 Table Mode (gmft)**: Specialized mode for complex table extraction.
+- **🐢 Scan Mode (RapidOCR)**: Fast local OCR fallback for 6 languages (en, ch_sim, ch_tra, ja, ko, ru).
+- **✨ Smart Cleaning**: Automatically removes headers/footers and fixes hyphenated text across all modes.
 
 ---
 
-## Option 1: Docker (Recommended)
+## ✨ Features
 
-Build and run the application in a container. This ensures all dependencies are isolated.
+- **RAG-Ready Output**: **(NEW)** Generates Markdown enriched with semantic annotations (headings, tables, lists, captions) and page markers for optimal chunking and retrieval.
+- **Layout-Aware OCR**: **(NEW)** Intelligent column detection and XY-cut reading order for multi-column documents (academic papers, newspapers).
+- **Quality Validation**: **(NEW)** Built-in validation layer that assesses output quality, detects hallucinations, and provides transparency with 0.0-1.0 quality scores.
+- **Enhanced Metadata**: **(NEW)** Every extraction includes detailed metadata (page counts, detected columns, OCR confidence) and YAML frontmatter.
+- **Cloud-First OCR**: Priority support for OpenRouter's vision models with specialized RAG-optimized prompts.
+- **Myanmar 🇲🇲 Support**: High-accuracy OCR for Myanmar language via OpenRouter.
+- **Auto-Detection**: Intelligently switches between extraction methods based on file content.
+- **Smart Fallback**: Automatically falls back to local RapidOCR with layout analysis if cloud extraction fails.
+- **Modern UI**: Clean, responsive interface with real-time quality metrics and cost estimation.
+
+---
+
+## 🚀 Getting Started
+
+### Option 1: Docker (Recommended)
 
 1.  **Build the Image**:
 
     ```bash
-    docker build -t smol-docling .
+    docker build -t docflow .
     ```
 
 2.  **Run the Container**:
 
     ```bash
-    docker run -p 7860:7860 smol-docling
+    docker run -p 7860:7860 docflow
     ```
 
-3.  **Open the UI**:
-    Go to `http://localhost:7860` in your browser.
-
-    _You will see a "Conversion Mode" option. Leave it on **Auto** for best results, or manually select **Fast** (Text) or **Accurate** (OCR)._
+3.  **Open the UI**: Go to `http://localhost:7860`
 
 ---
 
-## Option 2: Python CLI (Direct Usage)
-
-Run the script directly in your terminal.
+### Option 2: Python CLI (Direct Usage)
 
 **Prerequisites**:
 
@@ -50,9 +55,33 @@ pip install -r requirements.txt
 **Usage**:
 
 ```bash
-# Start the Web UI
 python app.py
-
-# Run backend OCR directly (Legacy Mode)
-python smoldocling.py my_document.pdf -o output.md
 ```
+
+---
+
+## ⚙️ OCR Engines
+
+| Engine            | Best For                              | Languages      | Privacy    | Cost                        |
+| :---------------- | :------------------------------------ | :------------- | :--------- | :-------------------------- |
+| **OpenRouter** ⭐ | Scanned PDFs, Images, Complex Layouts | 100+ (inc. 🇲🇲) | Cloud API  | **FREE** (Nemotron) or Paid |
+| **RapidOCR**      | Simple Scans, Offline Use             | 6 Languages    | 100% Local | FREE                        |
+| **MarkItDown**    | Digital PDFs (Copy-pasteable text)    | All            | 100% Local | FREE                        |
+
+### Recommended Cloud Models (via OpenRouter)
+
+1. **Nemotron Nano 12B VL (FREE)**: Best for general use and default choice.
+2. **Qwen 2.5-VL 72B**: Best for maximum accuracy on complex documents.
+3. **Gemini 2.0 Flash Lite**: Ultra-fast and cost-effective.
+
+---
+
+## 🛠️ Configuration
+
+To use OpenRouter, you'll need an API key from [openrouter.ai](https://openrouter.ai/). Enter it in the **⚙️ Settings** panel in the UI.
+
+---
+
+## 📜 License
+
+DocFlow is released under the MIT License.

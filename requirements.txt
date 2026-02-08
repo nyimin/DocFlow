@@ -1,9 +1,12 @@
-# transformers==4.48.2 (removed, not needed for rapidocr)
-
-accelerate>=0.26.0
-
-pillow
-rapidocr_onnxruntime
 pymupdf
+pymupdf4llm
 gradio
-markitdown
+rapidocr_onnxruntime
+markdown2
+python-docx
+gmft
+pillow
+opencv-python
+pandas
+openai>=1.0.0
+

@@ -1,0 +1,17 @@
+.git
+__pycache__
+cache
+extracted_images
+*.zip
+*.md
+!README.md
+!ARCHITECTURE.md
+docs/*.md
+!docs/openrouter_integration_revised.md
+!docs/openrouter_models_analysis.md
+.gemini
+.agent
+.system_generated
+*.webp
+*.png
+*.jpg

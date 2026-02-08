@@ -17,10 +17,9 @@ RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/c
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY smoldocling.py .
-COPY app.py .
-COPY fast_converter.py .
+# Copy application code and directories
+COPY *.py ./
+COPY docs/ ./docs/
 
 # Create a non-root user for security (optional but good practice)
 RUN useradd -m appuser
