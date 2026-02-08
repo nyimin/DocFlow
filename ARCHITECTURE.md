@@ -9,10 +9,11 @@ DocFlow is a multi-modal document extraction system designed to handle both digi
 1.  **Gradio UI (`app.py`)**: The entry point for users. Handles file uploads, setting configurations, and real-time feedback (cost estimation, quality scoring).
 2.  **Structure Engine (`structure_engine.py`)**: The orchestration layer. It manages different extraction engines, routes requests, and integrates validation layers.
 3.  **Layout Analyzer (`layout_analyzer.py`)**: Specialized module for document geometry. Handles column detection, XY-cut reading order, and semantic role classification.
-4.  **Validation Layers**:
+4.  **Normalization (`cleaner.py`)**: Deterministic post-processor that standardizes Markdown formatting (lists, spacing) and removes artifacts.
+5.  **Validation Layers**:
     - **OpenRouter Validator (`openrouter_validator.py`)**: Validates LLM output for hallucinations, semantic annotations, and reading order.
     - **RapidOCR Validator (`rapidocr_validator.py`)**: Assesses local OCR quality, layout accuracy, and completeness.
-5.  **Extraction Engines**:
+6.  **Extraction Engines**:
     - **OpenRouter (Cloud)**: Uses Vision LLMs for high-accuracy OCR with RAG-optimized specialized prompts.
     - **RapidOCR (Local)**: High-speed local OCR engine with layout-aware post-processing.
     - **MarkItDown / PyMuPDF**: Direct text extraction for digital PDFs.
@@ -49,14 +50,15 @@ Every extraction passes through a validation and layout analysis phase to ensure
 
 ```mermaid
 graph TD
-    A[OCR Output] --> B[Layout Analysis]
-    B -- Column Detection --> C[Reading Order XY-Cut]
-    C -- Role Detection --> D[Semantic Annotations]
-    D --> E[Quality Validation]
-    E -- Hallucination Check --> F[Final Markdown]
-    E -- Score Calculation --> G[YAML Frontmatter]
-    F --> H[Return Result]
-    G --> H
+    A[OCR Output] --> B[Normalization (cleaner.py)]
+    B --> C[Layout Analysis]
+    C -- Column Detection --> D[Reading Order XY-Cut]
+    D -- Noise Tagging --> E[Semantic Annotations]
+    E --> F[Quality Validation]
+    F -- Hallucination Check --> G[Final Markdown]
+    F -- Score Calculation --> H[YAML Frontmatter]
+    G --> I[Return Result]
+    H --> I
 ```
 
 ### 3. Automatic Fallback Mechanism
@@ -103,6 +105,7 @@ DocFlow is specifically designed for RAG (Retrieval-Augmented Generation) ingest
 The system injects HTML comments to provide semantic context without breaking Markdown compatibility:
 
 - `<!-- role:heading -->`: Identifies structural headings.
+- `<!-- role:header -->` / `<!-- role:footer -->`: Identifies page-level noise (preserved for fidelity).
 - `<!-- role:table -->`: Identifies tabular data.
 - `<!-- page:N -->`: Explicit page markers for chunking.
 - `<!-- reading-order:N -->`: Sequential order for multi-column layouts.
@@ -112,7 +115,8 @@ The system injects HTML comments to provide semantic context without breaking Ma
 A dedicated validation layer assesses every document:
 
 - **Hallucination Detection**: Checks for common LLM failure patterns and placeholder text.
-- **Completeness Check**: Estimates word count vs. page density to flag missing content.
+- **Data-Driven Completeness**: Uses PDF text layer metadata (if available) to verify OCR word counts against ground truth.
+- **Completeness Check**: Estimates word count vs. page density (fallback) to flag missing content.
 - **Confidence Markers**: Injects `<!-- confidence:X -->` markers for low-confidence OCR regions.
 
 ---

@@ -6,7 +6,7 @@ A powerful, optimized application that intelligently converts PDFs and images to
 - **⚡ Fast Mode (MarkItDown)**: Used for digital PDFs. Directly extracts text and tables.
 - **📊 Table Mode (gmft)**: Specialized mode for complex table extraction.
 - **🐢 Scan Mode (RapidOCR)**: Fast local OCR fallback for 6 languages (en, ch_sim, ch_tra, ja, ko, ru).
-- **✨ Smart Cleaning**: Automatically removes headers/footers and fixes hyphenated text across all modes.
+- **✨ Smart Cleaning**: **(NEW)** "Tag-Don't-Remove" strategy: Tags noise (headers, footers, watermarks) with semantic roles instead of deleting them, ensuring 100% content preservation for high-fidelity RAG.
 
 ---
 
@@ -29,16 +29,17 @@ A powerful, optimized application that intelligently converts PDFs and images to
 
 DocFlow v2.0 introduces a comprehensive quality enhancement pipeline:
 
-| Module                    | Purpose                                                      |
-| ------------------------- | ------------------------------------------------------------ |
-| `semantic_annotator.py`   | Semantic role classification (headings, lists, captions)     |
-| `confidence_tracker.py`   | End-to-end OCR confidence tracking and aggregation           |
-| `schema_enforcer.py`      | RAG-optimized Markdown Schema v2.0 compliance                |
-| `language_detector.py`    | Auto-detects document language (100+ languages)              |
-| `noise_filter.py`         | Removes headers/footers, watermarks, page numbers, artifacts |
-| `caption_extractor.py`    | Extracts and links captions to tables/figures                |
-| `validation_framework.py` | Unified validation with hallucination detection              |
-| `enhanced_pipeline.py`    | Orchestrates all modules in a staged pipeline                |
+| Module                    | Purpose                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| `semantic_annotator.py`   | Semantic role classification (headings, lists, captions)                      |
+| `confidence_tracker.py`   | End-to-end OCR confidence tracking and aggregation                            |
+| `schema_enforcer.py`      | RAG-optimized Markdown Schema v2.0 compliance                                 |
+| `language_detector.py`    | Auto-detects document language (100+ languages)                               |
+| `noise_filter.py`         | Removes headers/footers, watermarks, page numbers, artifacts                  |
+| `caption_extractor.py`    | Extracts and links captions to tables/figures                                 |
+| `cleaner.py`              | Deterministic Markdown normalization (spacing, lists, bullet standardization) |
+| `validation_framework.py` | Unified validation with hallucination detection                               |
+| `enhanced_pipeline.py`    | Orchestrates all modules in a staged pipeline                                 |
 
 ---
 

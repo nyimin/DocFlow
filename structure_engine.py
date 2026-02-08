@@ -264,9 +264,16 @@ class RapidOCRPage(BasePage):
     def close(self):
         pass
 
-def extract_with_rapidocr(input_path, dpi=300, lang="en"):
+def extract_with_rapidocr(input_path, dpi=300, lang="en", enhanced_mode=True):
     """
     Use RapidOCR + GMFT to extract text and tables from images/scans.
+    
+    Args:
+        input_path: Path to PDF or image file
+        dpi: DPI for PDF rendering
+        lang: Language code for OCR
+        enhanced_mode: Use v2.0 quality enhancement pipeline (default: True)
+    
     Returns: Markdown string.
     """
     if not ocr_engine:
@@ -411,9 +418,42 @@ def extract_with_rapidocr(input_path, dpi=300, lang="en"):
 
     # --- GLOBAL CLEANING STEP ---
     # remove repetitive headers/footers
-    cleaned_pages = cleaner.detect_and_remove_headers_footers(all_pages_elements)
+    # DISABLED: Delegated to EnhancedPipeline (noise_filter.py) for "Mark-Don't-Remove" strategy.
+    # cleaned_pages = cleaner.detect_and_remove_headers_footers(all_pages_elements)
+    cleaned_pages = all_pages_elements
 
-    # --- RENDER STEP ---
+    # --- ENHANCED PIPELINE (v2.0) ---
+    if enhanced_mode and ENHANCED_PIPELINE_AVAILABLE:
+        try:
+            # Extract metadata first
+            if input_path.lower().endswith('.pdf'):
+                doc_metadata = metadata_extractor.extract_pdf_metadata(input_path)
+            else:
+                doc_metadata = metadata_extractor.extract_image_metadata(input_path)
+            
+            # Add extraction method
+            doc_metadata['extraction_method'] = f"RapidOCR (lang={lang})"
+            
+            # Process through enhanced pipeline
+            markdown, report = process_document_enhanced(
+                cleaned_pages, 
+                doc_metadata,
+                quality_threshold=0.6
+            )
+            
+            # Log quality info
+            quality_score = report.get('quality', {}).get('score', 'N/A')
+            gate_passed = report.get('passed', True)
+            print(f"Enhanced Pipeline: quality={quality_score}, gate_passed={gate_passed}")
+            
+            return markdown
+            
+        except Exception as e:
+            print(f"Enhanced pipeline failed, falling back: {e}")
+            traceback.print_exc()
+            # Fall through to legacy rendering
+
+    # --- LEGACY RENDER STEP (fallback) ---
     # Render markdown with semantic annotations
     for i, page_elems in enumerate(cleaned_pages):
         output_md += f"\n\n<!-- page:{i + 1} -->\n\n"
@@ -564,8 +604,8 @@ def extract_with_openrouter(input_path, model="free", api_key=None):
             
             for page_num in range(page_count):
                 page = doc[page_num]
-                # Render page to image (150 DPI for speed)
-                pix = page.get_pixmap(dpi=150)
+                # Render page to image (300 DPI for high fidelity)
+                pix = page.get_pixmap(dpi=300)
                 img_bytes = pix.tobytes("png")
                 img_base64 = base64.b64encode(img_bytes).decode('utf-8')
                 images_base64.append(img_base64)
@@ -580,15 +620,16 @@ def extract_with_openrouter(input_path, model="free", api_key=None):
             page_count = 1
         
         
-        # Enhanced extraction prompt for RAG-optimized Markdown
+        # Enhanced extraction prompt for RAG-optimized Markdown (High-Fidelity)
         extraction_prompt = """You are a precision document OCR specialist. Extract ALL visible text from this document with PERFECT accuracy.
 
 🚨 CRITICAL RULES - NEVER VIOLATE:
 
 1. FACTUALITY: Extract ONLY what you see. NEVER invent, infer, or hallucinate content.
 2. UNCERTAINTY: If text is unclear/blurry, mark with [uncertain: best_guess]
-3. COMPLETENESS: Extract ALL visible text, including headers, footers, page numbers
-4. ACCURACY: Preserve exact spelling, punctuation, and formatting
+3. COMPLETENESS: Extract ALL visible text. DO NOT summarize or skip sections.
+4. ACCURACY: Preserve exact spelling, punctuation, and formatting.
+5. NOISE HANDLING: DO NOT REMOVE headers, footers, or page numbers. Instead, wrap them in semantic tags (see below).
 
 📋 OUTPUT FORMAT:
 
@@ -597,6 +638,13 @@ Use HTML comments for semantic annotations (invisible in rendering):
 <!-- page:N --> - Mark page boundaries
 <!-- role:TYPE --> - Before each element (heading, paragraph, table, list, figure, caption)
 <!-- confidence:0.XX --> - For uncertain content (0.0-1.0)
+
+🎨 STRICT STYLING RULES:
+
+1. Lists: ALWAYS use hyphens (-) for unordered lists, never asterisks (*).
+2. Spacing: EXACTLY one blank line between paragraphs/headers.
+3. Links: Format visible URLs as [Link Text](url).
+4. Tables: Align columns visually. Do not break rows across lines.
 
 🎯 SEMANTIC ROLES:
 
@@ -607,18 +655,22 @@ Use HTML comments for semantic annotations (invisible in rendering):
 - figure (with caption attribute)
 - caption
 - footnote (with id attribute)
+- header (for running headers)
+- footer (for running footers)
+- page-number
 
 📐 MARKDOWN FORMATTING:
 
 Headings: Use # ## ### based on visual hierarchy (size, bold, position)
 Tables: Use GitHub-flavored Markdown with alignment (:---, :---:, ---:)
-Lists: Preserve numbering and nesting
-Formatting: **bold** *italic* `code`
+Lists: Preserve numbering and nesting. Use indentation for nested lists.
+Formatting: **bold** *italic* `code` and [links](url)
 
 🔄 READING ORDER:
 
 Single-column: Top-to-bottom
-Multi-column: Left-to-right, then top-to-bottom within each column
+Multi-column: Left-to-right, then top-to-bottom within each column.
+Sidebars: Extract sidebars as separate blocks after the main section they appear next to, or at the end of the page if unrelated.
 
 📊 TABLES & FIGURES:
 
@@ -632,6 +684,7 @@ Multi-column: Left-to-right, then top-to-bottom within each column
 - "As shown in the document..."
 - "It appears that..."
 - "I can see that..."
+- "[Image of...]"
 
 If you catch yourself using these, STOP and extract only visible text.
 
@@ -639,9 +692,8 @@ If you catch yourself using these, STOP and extract only visible text.
 
 1. Did I extract ALL visible text?
 2. Did I preserve the correct reading order?
-3. Did I mark uncertain text?
-4. Did I add semantic role annotations?
-5. Did I avoid commentary?
+3. Did I tag headers/footers with <!-- role:header/footer --> instead of removing them?
+4. Did I avoid commentary?
 
 🎯 BEGIN EXTRACTION:
 
@@ -689,11 +741,18 @@ Extract the document content following all rules above. Start with <!-- page:1 -
         else:
             doc_metadata = metadata_extractor.extract_image_metadata(input_path)
         
+        # Normalize Markdown output (Phase 3: Post-Processing)
+        print("Normalizing markdown output...")
+        markdown_text = cleaner.normalize_markdown(markdown_text)
+        
         # Validate OpenRouter output for quality and hallucinations
+        expected_word_count = doc_metadata.get("text_layer_word_count", 0) if doc_metadata else 0
+        
         validation_report = openrouter_validator.validate_openrouter_output(
             markdown_text,
             page_count=page_count,
-            original_method=f"OpenRouter/{model_config['name']}"
+            original_method=f"OpenRouter/{model_config['name']}",
+            expected_word_count=expected_word_count
         )
         
         # Add YAML frontmatter with metadata and quality score

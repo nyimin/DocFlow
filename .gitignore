@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+sample_test.pdf
+extracted_images/
+cache/
+usage_stats.json
+conversion_history.json

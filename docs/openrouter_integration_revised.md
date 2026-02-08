@@ -1,5 +1,8 @@
 # OpenRouter OCR Integration - Revised Strategy
 
+> [!NOTE]
+> **Status: Implemented (v2.0)** - This document outlines the strategy that was implemented in Jan/Feb 2026. See `ARCHITECTURE.md` and `README.md` for the current state.
+
 ## 🎯 New Approach: Cloud-First with Free Tier
 
 Since **Nemotron Nano 12B VL is completely FREE**, we should prioritize OpenRouter over RapidOCR for better quality and Myanmar support.

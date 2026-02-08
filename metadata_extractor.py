@@ -96,6 +96,17 @@ def extract_pdf_metadata(pdf_path: str) -> Dict[str, Any]:
         doc = fitz.open(pdf_path)
         metadata = doc.metadata or {}
         page_count = len(doc)
+        
+        # Calculate text layer word count for validation ground truth
+        text_layer_word_count = 0
+        try:
+            for page in doc:
+                text = page.get_text()
+                if text:
+                    text_layer_word_count += len(text.split())
+        except Exception as e:
+            print(f"Warning: Failed to count words in PDF: {e}")
+        
         doc.close()
         
         file_stats = Path(pdf_path).stat()
@@ -103,6 +114,7 @@ def extract_pdf_metadata(pdf_path: str) -> Dict[str, Any]:
         return {
             "source_file": Path(pdf_path).name,
             "pages": page_count,
+            "text_layer_word_count": text_layer_word_count,
             "title": metadata.get("title", "").strip(),
             "author": metadata.get("author", "").strip(),
             "subject": metadata.get("subject", "").strip(),

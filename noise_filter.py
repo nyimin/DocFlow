@@ -84,21 +84,22 @@ class AdaptiveNoiseFilter:
             'artifacts': []
         }
     
-    def filter(self, pages_elements: List[List[Dict[str, Any]]]) -> List[List[Dict[str, Any]]]:
+    def filter(self, pages_elements: List[List[Dict[str, Any]]], tag_mode: bool = True) -> List[List[Dict[str, Any]]]:
         """
         Apply all noise filters to document.
         
         Args:
             pages_elements: List of element lists, one per page
+            tag_mode: If True, tags noise instead of removing it (High Fidelity mode)
         
         Returns:
-            Cleaned pages_elements
+            Cleaned/Tagged pages_elements
         """
         self.detected_noise = {k: [] for k in self.detected_noise}
         
         if len(pages_elements) < self.min_pages_for_detection:
             # Too few pages, only apply single-page filters
-            return [self._filter_single_page(page) for page in pages_elements]
+            return [self._filter_single_page(page, tag_mode) for page in pages_elements]
         
         # 1. Detect cross-page patterns
         repeaters = self._detect_repeating_content(pages_elements)
@@ -110,19 +111,28 @@ class AdaptiveNoiseFilter:
             for elem in page:
                 if elem.get('type') == 'text':
                     content = elem.get('content', '').strip()
+                    noise_type = None
                     
                     # Check all filters
-                    if self._is_header_footer(content, repeaters):
-                        continue
                     if self._is_page_number(content):
+                        noise_type = 'page_number'
                         self.detected_noise['page_numbers'].append(content)
-                        continue
-                    if self._is_watermark(content):
+                    elif self._is_header_footer(content, repeaters):
+                        noise_type = 'header' if self._is_header(content, repeaters) else 'footer'
+                        self.detected_noise['headers' if noise_type == 'header' else 'footers'].append(content)
+                    elif self._is_watermark(content):
+                        noise_type = 'watermark'
                         self.detected_noise['watermarks'].append(content)
-                        continue
-                    if self._is_artifact(content, elem):
+                    elif self._is_artifact(content, elem):
+                        noise_type = 'artifact'
                         self.detected_noise['artifacts'].append(content)
-                        continue
+                    
+                    if noise_type:
+                        if tag_mode:
+                            elem['noise_type'] = noise_type
+                            # Keep element
+                        else:
+                            continue # Remove element
                 
                 cleaned_page.append(elem)
             
@@ -146,17 +156,27 @@ class AdaptiveNoiseFilter:
             # Sort by Y position
             sorted_elems = sorted(text_elements, key=lambda e: e.get('y', e.get('bbox', [0, 0])[1] if e.get('bbox') else 0))
             
-            # Top 3 elements (potential headers)
-            for elem in sorted_elems[:3]:
-                content = self._normalize_for_matching(elem.get('content', ''))
-                if content and len(content) < 100:
-                    top_candidates[content] += 1
-            
-            # Bottom 3 elements (potential footers)
-            for elem in sorted_elems[-3:]:
-                content = self._normalize_for_matching(elem.get('content', ''))
-                if content and len(content) < 100:
-                    bottom_candidates[content] += 1
+            # Estimate page top/bottom
+            if sorted_elems:
+                min_y = sorted_elems[0].get('y', 0)
+                max_y = sorted_elems[-1].get('y', 1000)
+                page_height = max(max_y, 100) # Avoid div by zero
+                
+                # Top 3 elements (potential headers) - strict top 33% check
+                for elem in sorted_elems[:3]:
+                    y = elem.get('y', 0)
+                    if y < page_height * 0.33:
+                        content = self._normalize_for_matching(elem.get('content', ''))
+                        if content and len(content) < 100:
+                            top_candidates[content] += 1
+                
+                # Bottom 3 elements (potential footers) - strict bottom 33% check
+                for elem in sorted_elems[-3:]:
+                    y = elem.get('y', 0)
+                    if y > page_height * 0.67:
+                        content = self._normalize_for_matching(elem.get('content', ''))
+                        if content and len(content) < 100:
+                            bottom_candidates[content] += 1
         
         # Find repeaters
         threshold = total_pages * self.header_footer_threshold
@@ -179,6 +199,11 @@ class AdaptiveNoiseFilter:
         """Check if content matches detected header/footer patterns."""
         normalized = self._normalize_for_matching(content)
         return normalized in repeaters['headers'] or normalized in repeaters['footers']
+
+    def _is_header(self, content: str, repeaters: Dict[str, Set[str]]) -> bool:
+        """Check if content is a header."""
+        normalized = self._normalize_for_matching(content)
+        return normalized in repeaters['headers']
     
     def _is_page_number(self, content: str) -> bool:
         """Check if content is a page number."""
@@ -236,19 +261,27 @@ class AdaptiveNoiseFilter:
         
         return False
     
-    def _filter_single_page(self, page: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _filter_single_page(self, page: List[Dict[str, Any]], tag_mode: bool = True) -> List[Dict[str, Any]]:
         """Filter a single page without cross-page pattern detection."""
         cleaned = []
         for elem in page:
             if elem.get('type') == 'text':
                 content = elem.get('content', '').strip()
-                
+                noise_type = None
+
                 if self._is_page_number(content):
-                    continue
-                if self._is_watermark(content):
-                    continue
-                if self._is_artifact(content, elem):
-                    continue
+                    noise_type = 'page_number'
+                elif self._is_watermark(content):
+                    noise_type = 'watermark'
+                elif self._is_artifact(content, elem):
+                    noise_type = 'artifact'
+                
+                if noise_type:
+                    if tag_mode:
+                        elem['noise_type'] = noise_type
+                        # Keep element
+                    else:
+                        continue # Remove
             
             cleaned.append(elem)
         

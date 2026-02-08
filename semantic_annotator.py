@@ -147,7 +147,12 @@ class SemanticAnnotator:
             return ""
         
         # Classify semantic role
-        role, attributes = self._classify_text_role(element, context)
+        noise_type = element.get('noise_type')
+        if noise_type:
+            role = noise_type
+            attributes = {}
+        else:
+            role, attributes = self._classify_text_role(element, context)
         
         # Build annotation
         output = ""

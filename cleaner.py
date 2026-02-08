@@ -8,8 +8,8 @@ def merge_hyphenated_words(text):
     Example: "This is a bro- \n ken sentence." -> "This is a broken sentence."
     """
     # Regex for word ending with hyphen, optional whitespace/newline, starting next word
-    # distinct from dashes used as punctuation
-    pattern = r'([a-zA-Z]+)-\s*\n\s*([a-zA-Z]+)'
+    # distinct from dashes used as punctuation. Strict: second part must be lowercase.
+    pattern = r'([a-zA-Z]+)-\s*\n\s*([a-z]+)'
     return re.sub(pattern, r'\1\2', text)
 
 def detect_and_remove_headers_footers(pages_elements, threshold=0.6):
@@ -101,3 +101,41 @@ def defragment_text(text):
         merged.append(current_line)
         
     return '\n'.join(merged)
+
+
+def normalize_markdown(text: str) -> str:
+    """
+    Normalize Markdown output to ensure consistent styling and remove artifacts.
+    
+    Operations:
+    1. Standardize line breaks (max 2 consecutive newlines)
+    2. Convert asteroid bullets (*) to hyphens (-)
+    3. Ensure blank lines before headers
+    4. Remove empty semantic tags
+    
+    Args:
+        text (str): Raw markdown text
+        
+    Returns:
+        str: Normalized markdown text
+    """
+    if not text:
+        return ""
+
+    # 1. Standardize line breaks (max 2 newlines)
+    # Replace 3 or more newlines with 2
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    # 2. Standardize list bullets (convert * start to -)
+    # Only matches * at start of line or after whitespace
+    text = re.sub(r'^(\s*)\* ', r'\1- ', text, flags=re.MULTILINE)
+    
+    # 3. Ensure blank lines before headers
+    # If a header (#) is preceded by a non-newline char and a single newline, add another newline
+    text = re.sub(r'([^\n])\n(#{1,6} )', r'\1\n\n\2', text)
+    
+    # 4. Remove empty semantic tags (e.g., <!-- role:artifact -->\n<!-- /role -->)
+    # This regex looks for tags with only whitespace content
+    text = re.sub(r'<!-- role:\w+ -->\s*<!-- /role -->', '', text)
+    
+    return text.strip()

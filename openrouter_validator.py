@@ -109,7 +109,8 @@ def validate_semantic_annotations(markdown_text: str) -> Dict[str, Any]:
     # Validate role types
     valid_roles = {
         'heading', 'paragraph', 'table', 'list', 'figure', 
-        'caption', 'footnote', 'equation', 'code'
+        'caption', 'footnote', 'equation', 'code',
+        'header', 'footer', 'page_number', 'artifact', 'watermark'
     }
     
     invalid_roles = results["role_types"] - valid_roles
@@ -156,13 +157,14 @@ def validate_reading_order(markdown_text: str) -> Dict[str, Any]:
     return results
 
 
-def estimate_completeness(markdown_text: str, page_count: int) -> Dict[str, Any]:
+def estimate_completeness(markdown_text: str, page_count: int, expected_word_count: Optional[int] = None) -> Dict[str, Any]:
     """
-    Estimate extraction completeness using heuristics.
+    Estimate extraction completeness using heuristics or provided word count.
     
     Args:
         markdown_text: Extracted Markdown content
         page_count: Number of pages in original document
+        expected_word_count: Optional expected word count from source metadata
     
     Returns:
         Completeness metrics
@@ -173,15 +175,23 @@ def estimate_completeness(markdown_text: str, page_count: int) -> Dict[str, Any]
     word_count = len(clean_text.split())
     line_count = len([l for l in clean_text.split('\n') if l.strip()])
     
-    # Heuristic: expect ~200-500 words per page for typical documents
-    expected_words_min = page_count * 150
-    expected_words_max = page_count * 600
+    # Calculate expected range
+    if expected_word_count and expected_word_count > 0:
+        # If we have ground truth (e.g. from PDF text layer), use it
+        # OCR might extract slightly more (headers/footers) or less (layout issues)
+        # Allow 20% variance
+        expected_words_min = int(expected_word_count * 0.8)
+        expected_words_max = int(expected_word_count * 1.5) # Allow more for artifacts/hallucinations
+    else:
+        # Heuristic: expect ~200-500 words per page for typical documents
+        expected_words_min = page_count * 150
+        expected_words_max = page_count * 600
     
     completeness_score = 1.0
     issues = []
     
     if word_count < expected_words_min:
-        completeness_score = word_count / expected_words_min
+        completeness_score = word_count / expected_words_min if expected_words_min > 0 else 0
         issues.append({
             "type": "possibly_incomplete",
             "message": f"Word count ({word_count}) below expected minimum ({expected_words_min})",
@@ -205,7 +215,8 @@ def estimate_completeness(markdown_text: str, page_count: int) -> Dict[str, Any]
 
 def validate_openrouter_output(markdown_text: str, 
                                page_count: int,
-                               original_method: str = "OpenRouter") -> Dict[str, Any]:
+                               original_method: str = "OpenRouter",
+                               expected_word_count: Optional[int] = None) -> Dict[str, Any]:
     """
     Comprehensive validation of OpenRouter extraction output.
     
@@ -213,6 +224,7 @@ def validate_openrouter_output(markdown_text: str,
         markdown_text: Extracted Markdown content
         page_count: Number of pages in original document
         original_method: Extraction method name
+        expected_word_count: Optional expected word count from source metadata
     
     Returns:
         Comprehensive validation report
@@ -221,7 +233,7 @@ def validate_openrouter_output(markdown_text: str,
     hallucinations = detect_hallucination_phrases(markdown_text)
     semantic_validation = validate_semantic_annotations(markdown_text)
     reading_order = validate_reading_order(markdown_text)
-    completeness = estimate_completeness(markdown_text, page_count)
+    completeness = estimate_completeness(markdown_text, page_count, expected_word_count)
     
     # Use existing validator for base checks
     base_validation = validator.validate_markdown(markdown_text, original_method)
