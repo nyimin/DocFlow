@@ -3,8 +3,9 @@ import gradio as gr
 import shutil
 import tempfile
 import os
-import smoldocling
-import torch
+# import smoldocling (removed)
+# import torch (removed)
+
 import fitz # PyMuPDF
 import fast_converter
 import structure_engine # New table extraction engine
@@ -35,15 +36,16 @@ def process_upload(file, mode, progress=gr.Progress()):
                             print("Auto-Detect: Found significant text layer. Using FAST mode.")
                             mode = "gmft (Fast Tables)" # Upgrade auto to gmft for better tables
                         else:
-                            print("Auto-Detect: Low text density. Using Surya mode.")
-                            mode = "Surya (Scan Tables)" # Upgrade auto scan to Surya
+                            print("Auto-Detect: Low text density. Using RapidOCR mode.")
+                            mode = "RapidOCR (Images/Scans)" # Upgrade auto scan to RapidOCR
                     doc.close()
                 except Exception as e:
                     print(f"Auto-detect failed: {e}. Defaulting to OCR.")
-                    mode = "Surya (Scan Tables)"
+                    mode = "RapidOCR (Images/Scans)"
             else:
                 # Images always need OCR
-                mode = "Surya (Scan Tables)"
+                mode = "RapidOCR (Images/Scans)"
+
 
         markdown_text = None
 
@@ -58,29 +60,12 @@ def process_upload(file, mode, progress=gr.Progress()):
                  return None, None, None, "Error: gmft only supports PDFs."
              markdown_text = structure_engine.extract_with_gmft(input_path)
 
-        elif mode == "Surya (Scan Tables)":
-             progress(0.2, desc="Scanning tables (Surya)...")
-             images = []
-             if input_path.lower().endswith(".pdf"):
-                 images = smoldocling.pdf_to_images(input_path)
-             else:
-                 from PIL import Image
-                 images = [Image.open(input_path).convert("RGB")]
-             
-             markdown_text = structure_engine.extract_with_surya(images)
+        elif mode == "RapidOCR (Images/Scans)":
+             progress(0.2, desc="Scanning text (RapidOCR)...")
+             markdown_text = structure_engine.extract_with_rapidocr(input_path)
 
-        else: # SmolDocling (VLM)
-            progress(0.2, desc="Initializing VLM...")
-            # Callback wrapper for Gradio Progress
-            def update_progress(p, desc):
-                progress(p, desc=desc)
-
-            markdown_text = smoldocling.process_document(
-                input_path, 
-                output_path=None, 
-                device=DEVICE,
-                progress_callback=update_progress
-            )
+        else: 
+            return None, None, None, "Invalid mode selected."
         
         if markdown_text is None:
             return None, None, None, "Failed to process document."
@@ -126,7 +111,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, title="SmolDocling") as d
                 scale=2
             )
             mode_input = gr.Radio(
-                ["Auto", "MarkItDown (Text Only)", "gmft (Fast Tables)", "Surya (Scan Tables)", "SmolDocling (VLM)"],
+                ["Auto", "MarkItDown (Text Only)", "gmft (Fast Tables)", "RapidOCR (Images/Scans)"],
                 label="Conversion Mode (Default: Auto)",
                 value="Auto",
                 scale=1
@@ -134,7 +119,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, title="SmolDocling") as d
             process_btn = gr.Button("Convert", variant="primary", scale=1)
             
             # Quick Tip
-            gr.Markdown("ℹ️ **Tip:** 'gmft' is best for digital tables. 'Surya' is best for scanned tables.")
+            gr.Markdown("ℹ️ **Tip:** 'gmft' is best for digital tables. 'RapidOCR' is best for scanned documents.")
         
         error_box = gr.Markdown(visible=True) # To show errors
         

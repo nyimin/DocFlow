@@ -1,9 +1,9 @@
+# transformers==4.48.2 (removed, not needed for rapidocr)
 
-transformers==4.48.2
 accelerate>=0.26.0
 
 pillow
-docling-core
+rapidocr_onnxruntime
 pymupdf
 gradio
 markitdown
