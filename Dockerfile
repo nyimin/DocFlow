@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
+# Install CPU-Only PyTorch first to avoid downloading CUDA bundles
+RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
