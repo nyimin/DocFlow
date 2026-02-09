@@ -81,7 +81,7 @@ def extract_with_pymupdf4llm(pdf_path):
         doc.close()
         
         # Extract document metadata
-        doc_metadata = metadata_extractor.extract_metadata(pdf_path)
+        doc_metadata = metadata_extractor.extract_pdf_metadata(pdf_path)
         
         # Add YAML frontmatter
         extraction_method = "pymupdf4llm (Digital PDF - LLM Optimized)"
@@ -90,8 +90,7 @@ def extract_with_pymupdf4llm(pdf_path):
             doc_metadata,
             extraction_method=extraction_method,
             confidence_score=None,
-            language="en",
-            ocr_engine="pymupdf4llm"
+            language="en"
         )
         
         metadata = {

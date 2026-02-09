@@ -873,8 +873,8 @@ with gr.Blocks(title="DocFlow") as demo:
                     gr.Markdown("### Processing Options")
                     with gr.Row():
                         use_cache = gr.Checkbox(value=True, label="Use Cache")
-                        page_start = gr.Number(label="Start Page", precision=0, minimum=1)
-                        page_end = gr.Number(label="End Page", precision=0, minimum=1)
+                        page_start = gr.Number(label="Start Page", precision=0, minimum=0, value=1)
+                        page_end = gr.Number(label="End Page", precision=0, minimum=0)
                     
                     # Theme Toggle
                     gr.Markdown("### Appearance")
